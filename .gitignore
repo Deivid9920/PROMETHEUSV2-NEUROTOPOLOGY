@@ -1,0 +1,23 @@
+# Environment and caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Pipeline outputs (regenerated each run)
+logs/*
+!logs/.gitkeep
+data_raw/*
+!data_raw/.gitkeep
+data_clean/*
+!data_clean/.gitkeep
+!data_clean/holdout/
+triplets/*
+!triplets/.gitkeep
+
+# Training artifacts: checkpoints are heavy, the tokenizer is committed
+artifacts/checkpoints/*
+!artifacts/checkpoints/.gitkeep
+
+# Figures are reproducible from logs
+docs/*.png

@@ -1,0 +1,20 @@
+# Prometheus-NS dependencies (CPU-first).
+# torch is installed FIRST by `make setup` from the CPU wheel index;
+# the line below keeps the version constraint pinned so pip does not
+# replace it with the default wheel afterwards.
+
+torch>=2.3,<2.5
+tokenizers>=0.19,<0.21
+httpx>=0.27,<0.29
+trafilatura>=1.8,<1.13
+readability-lxml>=0.8,<0.9
+spacy>=3.7,<3.9
+networkx>=3.3,<3.5
+datasketch>=1.6,<1.7
+ftfy>=6.2,<6.4
+numpy>=1.26,<2.1
+matplotlib>=3.8,<3.10
+pyyaml>=6,<7
+pytest>=8,<9
+tqdm>=4.66,<4.68
+psutil>=5.9,<6

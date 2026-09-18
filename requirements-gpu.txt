@@ -1,0 +1,6 @@
+# GPU migration requirements (docs/gpu_migration.md, phase 8).
+# Linux wheels of torch on the default index already bundle CUDA;
+# the extra index below targets explicit cu121 builds when needed.
+
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch>=2.3,<2.5

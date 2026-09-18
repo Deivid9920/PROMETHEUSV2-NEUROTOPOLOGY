@@ -1,0 +1,124 @@
+# Prometheus-NS domain prompt suite (schema_version 1).
+# 20 prompts, no expected answers: outputs are recorded as observed.
+# The defaults block feeds every prompt; per-prompt keys override it.
+# diagnostic: true probes are reported as failed when they fail,
+# without post-hoc corrections.
+
+schema_version: 1
+defaults:
+  max_new_tokens: 60
+  temperature: 0.8
+  top_k: 40
+  top_p: 0.9
+  repetition_penalty: 1.15
+  apply_symbolic_check: true
+output_path: eval/prompt_outputs.jsonl
+
+prompts:
+  - id: factual-01
+    category: factual
+    prompt: "Water boils at a temperature of"
+    review_note: "numeric factual claim; small models often produce plausible-but-wrong numbers: record what it says"
+
+  - id: factual-02
+    category: factual
+    prompt: "The capital of France is"
+    review_note: "canonical entity recall; review manually"
+
+  - id: factual-03
+    category: factual
+    prompt: "The largest planet in the solar system is"
+    review_note: "canonical entity recall; review manually"
+
+  - id: factual-04
+    category: factual
+    prompt: "The sun is a"
+    review_note: "short is_a claim; the symbolic validator flags conflicts with high-confidence graph triplets"
+
+  - id: listing-01
+    category: listing
+    prompt: "The primary colors are"
+    review_note: "enumeration; review manually"
+
+  - id: listing-02
+    category: listing
+    prompt: "Famous works by William Shakespeare include"
+    review_note: "entity-listing; review manually"
+
+  - id: listing-03
+    category: listing
+    prompt: "The four seasons of the year are"
+    review_note: "canonical enumeration; review manually"
+
+  - id: causal-01
+    category: commonsense
+    prompt: "When it rains, the streets become"
+    review_note: "everyday causality; review manually"
+
+  - id: causal-02
+    category: commonsense
+    prompt: "If you heat ice, it"
+    review_note: "physical causality; review manually"
+
+  - id: causal-03
+    category: commonsense
+    prompt: "The sun rises in the"
+    review_note: "spatial causality; review manually"
+
+  - id: narrative-01
+    category: narrative
+    prompt: "It was a dark and stormy night, and the old lighthouse keeper"
+    apply_symbolic_check: false
+    review_note: "free continuation in Gutenberg style; no factual claims expected, judge fluency and repetition only"
+
+  - id: narrative-02
+    category: narrative
+    prompt: "The young prince opened the ancient door and saw"
+    apply_symbolic_check: false
+    review_note: "free continuation; judge fluency, repetition and length behavior"
+
+  - id: narrative-03
+    category: narrative
+    prompt: "Once upon a time, in a small village near the mountains,"
+    apply_symbolic_check: false
+    review_note: "free continuation; judge fluency and repetition only"
+
+  - id: technical-01
+    category: technical
+    prompt: "In this paper, we propose a novel method for"
+    apply_symbolic_check: false
+    review_note: "arXiv-style continuation; judge register and jargon plausibility"
+
+  - id: technical-02
+    category: technical
+    prompt: "The transformer architecture is based on the attention mechanism, which"
+    review_note: "technical factual claim; validator flags contradictions with high-confidence graph triplets"
+
+  - id: technical-03
+    category: technical
+    prompt: "Neural networks are trained using"
+    review_note: "technical factual claim; review manually"
+
+  - id: negation-01
+    category: diagnostic
+    diagnostic: true
+    prompt: "A bat is not a"
+    review_note: "negation probe: very small models frequently ignore the negation; record the failure as-is"
+
+  - id: negation-02
+    category: diagnostic
+    diagnostic: true
+    prompt: "Penguins are birds that cannot"
+    review_note: "negation + property probe; record as-is"
+
+  - id: composition-01
+    category: diagnostic
+    diagnostic: true
+    prompt: "A cat is an animal. A dog is an animal. A cat and a dog are both"
+    review_note: "two-hop composition; validator checks the final is_a against the graph"
+
+  - id: numeric-01
+    category: diagnostic
+    diagnostic: true
+    prompt: "Two plus two equals"
+    review_note: "arithmetic probe: expected to fail for a model of this size; report honestly, never hand-correct"

@@ -1,0 +1,12 @@
+# Normalize line endings on commit so byte-level holdout digests are
+# reproducible across platforms (see docs/gpu_migration.md, hash traps).
+* text=auto eol=lf
+
+# The frozen holdout must never be rewritten by git: its SHA-256 is an
+# integrity anchor recorded in config.yaml (loop.holdout_sha256).
+data_clean/holdout/** -text
+
+# Binary artifacts
+*.pt binary
+*.bin binary
+*.png binary
