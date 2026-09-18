@@ -29,7 +29,7 @@ import psutil
 import torch
 from torch import nn
 
-from prometheus_ns import cfg_get, ensure_dir, repo_path
+from prometheus_ns import cfg_get, ensure_dir, load_config, repo_path
 from prometheus_ns.device import autocast_ctx, get_device, setup_compute
 from prometheus_ns.model.config import ModelConfig, model_config_from_yaml
 from prometheus_ns.model.model import EOS_ID, PAD_ID, TransformerLM

@@ -109,8 +109,16 @@ def gutenberg_urls(seed: int, count: int) -> list[str]:
     return [f"https://www.gutenberg.org/cache/epub/{gid}/pg{gid}.txt" for gid in ids]
 
 
-def arxiv_urls(seed: int, count: int) -> list[str]:
-    """Discover arXiv abstract pages through the public export API."""
+def arxiv_urls(seed: int, count: int, user_agent: str = "PrometheusNS-Research/0.1") -> list[str]:
+    """Discover arXiv abstract pages through the public export API.
+
+    Discovery uses ``urllib`` because the export API answers httpx
+    requests with 406 regardless of headers; the identified crawler
+    User-Agent is sent on every call.
+    """
+    import urllib.error
+    import urllib.request
+
     rng = random.Random(seed)
     start = rng.randrange(0, 2000)
     urls: list[str] = []
@@ -121,12 +129,14 @@ def arxiv_urls(seed: int, count: int) -> list[str]:
             f"?search_query={_ARXIV_QUERY}&start={start}&max_results={batch}"
         )
         try:
-            resp = httpx.get(api, timeout=20.0, headers={"User-Agent": "discovery"})
-        except httpx.HTTPError:
+            request = urllib.request.Request(
+                api.replace(" ", "%20"), headers={"User-Agent": user_agent}
+            )
+            with urllib.request.urlopen(request, timeout=20.0) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+        except (urllib.error.URLError, OSError):
             break
-        if resp.status_code != 200:
-            break
-        for line in resp.text.split("\n"):
+        for line in body.split("\n"):
             line = line.strip()
             if line.startswith("<id>http://arxiv.org/abs/"):
                 abs_url = line.removeprefix("<id>").removesuffix("</id>")
@@ -172,7 +182,8 @@ async def discover_urls(cfg: dict, client: httpx.AsyncClient) -> list[tuple[str,
         if source == "gutenberg":
             pairs.extend(("gutenberg", u) for u in gutenberg_urls(seed, per_source))
         elif source == "arxiv":
-            pairs.extend(("arxiv", u) for u in arxiv_urls(seed, per_source))
+            ua = str(cfg_get(cfg, "data.user_agent", "PrometheusNS-Research/0.1"))
+            pairs.extend(("arxiv", u) for u in arxiv_urls(seed, per_source, user_agent=ua))
         elif source == "wikipedia":
             titles = await wikipedia_urls(client, seed, per_source)
             pairs.extend(("wikipedia", u) for u in titles)
@@ -244,9 +255,9 @@ async def run_crawl(cfg: dict) -> list[FetchResult]:
         bucket = DomainBucket(rps)
         pairs = await discover_urls(cfg, client)
         for source, url in pairs:
-            result = await fetch_one(client, bucket, robots, crawl_log, raw_dir, url, timeout_s, retries)
-            result.reason = result.reason or source
-            results.append(result)
+            # `source` only drives discovery; the crawl log records the
+            # URL, from which the domain and origin are recoverable.
+            results.append(await fetch_one(client, bucket, robots, crawl_log, raw_dir, url, timeout_s, retries))
     return results
 
 

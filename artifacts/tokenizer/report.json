@@ -1,0 +1,9 @@
+{
+  "profile": "nano",
+  "vocab_size": 8000,
+  "tokens_per_word": 1.4114,
+  "train_seconds": 0.58,
+  "chars_per_second": 2119279.8,
+  "files_used": 21,
+  "MB_used": 1.17
+}

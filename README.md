@@ -102,19 +102,26 @@ part of the integrity anchor.
 ## Measured metrics
 
 No estimated numbers are reported in this project; the table below is
-populated only from executed runs. The smoke values below were
-measured on a 2-core / 3 GB CPU container (the reference environment
-of the specification assumes 8-16 cores).
+populated only from executed runs. The smoke values were measured on a
+2-core / 3 GB CPU container (the reference environment of the
+specification assumes 8-16 cores); Wikipedia API access was blocked
+from that network (HTTP 403), so the smoke crawl covered Project
+Gutenberg and arXiv only. The reduced-scale configuration used for the
+smoke run is preserved in `config.smoke.yaml`; `config.yaml` keeps the
+contracted defaults for real runs.
 
 | Metric | Value | Source |
 |--------|-------|--------|
 | nano parameter count | 13,693,824 | `python -m prometheus_ns.model.count_params --profile nano` |
 | small parameter count (analytic) | 97,241,856 | `python -m prometheus_ns.model.count_params --profile small` |
 | large parameter count (analytic) | 268,076,032 | `python -m prometheus_ns.model.count_params --profile large` |
-| training throughput (CPU smoke) | see `logs/metrics.jsonl` from the run below | smoke run record |
-| smoke-run perplexity delta | see `docs/smoke_loss.png` | Phase 3 verification |
-| int8 quantization perplexity delta | see `logs/eval_ppl.json` | `make eval --int8` |
-| per-round promotion metrics | see `docs/promotion_log.md` | `make loop ROUNDS=1` |
+| training throughput (CPU smoke, 2 cores) | 1,504.8 tokens/s | `logs/metrics.jsonl` (500k-token run) |
+| smoke-run val perplexity | 2430.10 -> 1367.43 (500k tokens, 31 steps) | trainer stdout + `logs/metrics.jsonl` |
+| holdout perplexity fp32 | 2,928.72 | `logs/eval_ppl.json` |
+| holdout perplexity int8 (dynamic) | 2,927.76 (-0.03% vs fp32) | `logs/eval_ppl.json` |
+| tokenizer fertility (nano, 8k vocab) | 1.4114 tokens/word | `artifacts/tokenizer/report.json` |
+| round 1 promotion | promoted: val_ppl 2,276.62, diversity 0.4720 | `docs/promotion_log.md` |
+| smoke corpus (16 pages crawled, 2 sources) | 22 docs kept, 1.174 MB | `docs/data_report.json` |
 
 ## GPU migration
 

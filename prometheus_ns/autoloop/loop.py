@@ -10,6 +10,7 @@ exceeding the CPU budget.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import time
@@ -117,7 +118,7 @@ def run_round(
         int(cfg_get(cfg, "data.max_pages_per_source", 200)), new_cap
     )
     try:
-        crawl_results = run_crawl(crawl_cfg)
+        crawl_results = asyncio.run(run_crawl(crawl_cfg))
         crawl_ok = sum(1 for r in crawl_results if r.status == 200)
     except Exception as exc:  # noqa: BLE001 - a dead source must not kill the round
         crawl_ok = 0
@@ -166,17 +167,21 @@ def run_round(
             champion_diversity = None
 
     # 7. Rebuild the packed dataset (holdout and quarantined docs excluded)
-    #    and run continued pretraining from the champion when present.
+    #    and run continued pretraining: from the champion when one exists,
+    #    otherwise from the latest checkpoint of a plain pretraining run,
+    #    otherwise from scratch (bootstrap round).
     build_packed_dataset(cfg, tokenizer)
     timeout_s = float(cfg_get(cfg, "loop.round_timeout_s", 10800))
     remaining_budget = timeout_s - (time.time() - started)
+    init_ckpt = champion_path if champion_path.exists() else checkpoints_dir / "latest.pt"
+    continuing = init_ckpt.exists()
     train_result = train(
         cfg,
         cfg_get(cfg, "model.profile", "nano"),
         tokenizer,
         max_tokens=max_tokens,
-        init_from=champion_path if champion_path.exists() else None,
-        continue_lr_frac=float(cfg_get(cfg, "train.continue_lr_frac", 0.3)) if champion_path.exists() else None,
+        init_from=init_ckpt if continuing else None,
+        continue_lr_frac=float(cfg_get(cfg, "train.continue_lr_frac", 0.3)) if continuing else None,
         timeout_s=max(remaining_budget, 60.0),
         checkpoints_dir=checkpoints_dir,
         metrics_path=logs_dir / "metrics.jsonl",

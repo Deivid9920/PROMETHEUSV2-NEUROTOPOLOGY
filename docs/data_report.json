@@ -1,0 +1,43 @@
+{
+  "por_fuente": {
+    "arxiv.org": {
+      "docs": 6,
+      "MB": 0.015,
+      "descartados_por_regla": {
+        "length": 0,
+        "dup_exact": 0,
+        "dup_near": 0,
+        "holdout_contamination": 0,
+        "symbol_ratio": 0,
+        "mean_word_len": 0,
+        "punct_lines": 0,
+        "stopword_ratio": 13,
+        "quantile": 6,
+        "extraction_failed": 0,
+        "challenge_page": 0
+      }
+    },
+    "www.gutenberg.org": {
+      "docs": 16,
+      "MB": 1.159,
+      "descartados_por_regla": {
+        "length": 0,
+        "dup_exact": 0,
+        "dup_near": 0,
+        "holdout_contamination": 0,
+        "symbol_ratio": 0,
+        "mean_word_len": 0,
+        "punct_lines": 0,
+        "stopword_ratio": 13,
+        "quantile": 6,
+        "extraction_failed": 0,
+        "challenge_page": 0
+      }
+    }
+  },
+  "total_docs": 22,
+  "total_MB": 1.174,
+  "dup_exactos": 0,
+  "dup_near": 0,
+  "duracion_s": 11.2
+}

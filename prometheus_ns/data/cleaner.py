@@ -46,6 +46,32 @@ def normalize_text(text: str) -> str:
     return "\n".join(lines)
 
 
+def unwrap_paragraphs(text: str) -> str:
+    """Rebuild paragraphs from hard-wrapped prose.
+
+    Plain-text sources (Project Gutenberg) break sentences across
+    ~80-column lines, so a line-level punctuation heuristic would fail
+    on almost every book. Lines that do not end a sentence are joined
+    with the next one; blank lines flush the current paragraph.
+    """
+    paragraphs: list[str] = []
+    buf: list[str] = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            if buf:
+                paragraphs.append(" ".join(buf))
+                buf = []
+            continue
+        buf.append(stripped)
+        if stripped.endswith((".", "!", "?", '"', "'", ":", ";")):
+            paragraphs.append(" ".join(buf))
+            buf = []
+    if buf:
+        paragraphs.append(" ".join(buf))
+    return "\n".join(paragraphs)
+
+
 def doc_hash(text: str) -> str:
     """SHA-256 hex digest of the normalized text (exact-dedup key)."""
     return sha256(text.encode("utf-8")).hexdigest()
@@ -170,6 +196,31 @@ def iter_raw_files(raw_dir: Path) -> Iterator[tuple[str, Path]]:
         yield path.parent.name, path
 
 
+def _split_into_chunks(text: str, max_chars: int) -> list[str]:
+    """Split an over-long document at paragraph boundaries.
+
+    Book-length sources (Project Gutenberg) exceed any reasonable
+    per-document cap; dropping them wholesale would surrender the
+    highest-quality prose in the corpus. Chunks stay within the
+    ``max_doc_chars`` contract and each one keeps its own hash so the
+    deduplication and quality stages operate on contract-sized docs.
+    """
+    if len(text) <= max_chars:
+        return [text]
+    chunks: list[str] = []
+    current: list[str] = []
+    size = 0
+    for paragraph in text.split("\n"):
+        if size + len(paragraph) + 1 > max_chars and current:
+            chunks.append("\n".join(current))
+            current, size = [], 0
+        current.append(paragraph)
+        size += len(paragraph) + 1
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
 def clean_corpus(cfg: dict) -> dict:
     """Run the full cleaning pass over ``data_raw`` and rebuild ``data_clean``.
 
@@ -191,10 +242,12 @@ def clean_corpus(cfg: dict) -> dict:
     keep_quantile = float(cfg_get(cfg, "clean.keep_quantile", 0.8))
     symbol_max = float(cfg_get(cfg, "clean.symbol_ratio_max", 0.1))
     arxiv_symbol_max = float(cfg_get(cfg, "clean.arxiv_symbol_ratio_max", 0.2))
+    punct_min = float(cfg_get(cfg, "clean.punct_line_frac_min", 0.8))
+    arxiv_punct_min = float(cfg_get(cfg, "clean.arxiv_punct_line_frac_min", 0.5))
     gopher = {
         "mean_word_len_min": float(cfg_get(cfg, "clean.mean_word_len_min", 3.0)),
         "mean_word_len_max": float(cfg_get(cfg, "clean.mean_word_len_max", 10.0)),
-        "punct_line_frac_min": float(cfg_get(cfg, "clean.punct_line_frac_min", 0.8)),
+        "punct_line_frac_min": punct_min,
         "stopword_ratio_min": float(cfg_get(cfg, "clean.stopword_ratio_min", 0.3)),
     }
 
@@ -210,6 +263,55 @@ def clean_corpus(cfg: dict) -> dict:
 
     # Phase 1: extract, normalize, dedup, filter; write surviving candidates.
     scored: list[tuple[str, str, float]] = []  # (hash, source, score)
+
+    def process_chunk(chunk: str, source: str) -> bool:
+        """Dedup, filter and stage one contract-sized chunk.
+
+        Returns True when the chunk was written as a candidate.
+        """
+        if len(chunk) < min_doc:
+            stats.length += 1
+            return False
+        dhash = doc_hash(chunk)
+        if dhash in seen_exact:
+            stats.dup_exact += 1
+            return False
+        seen_exact.add(dhash)
+        shingles = paragraph_shingles(chunk, shingle_words)
+        mh = minhash_from_shingles(shingles, num_perm)
+        if mh is not None:
+            dup_of = near_dup.is_near_dup(mh, dhash)
+            if dup_of is not None:
+                stats.dup_near += 1
+                stats.dup_pairs.append([dhash[:12], str(dup_of)[:12]])
+                return False
+            if _query_holdout(holdout_near, mh):
+                stats.holdout_contamination += 1
+                return False
+        effective_symbol_max = arxiv_symbol_max if source == "arxiv" else symbol_max
+        effective_punct_min = arxiv_punct_min if source == "arxiv" else punct_min
+        reasons = _quality.gopher_checks(
+            chunk,
+            symbol_ratio_max=effective_symbol_max,
+            punct_line_frac_min=effective_punct_min,
+            **{k: v for k, v in gopher.items() if k != "punct_line_frac_min"},
+        )
+        if reasons:
+            for reason in reasons:
+                if reason == "symbol_ratio":
+                    stats.symbol_ratio += 1
+                elif reason == "mean_word_len":
+                    stats.mean_word_len += 1
+                elif reason == "punct_lines":
+                    stats.punct_lines += 1
+                elif reason == "stopword_ratio":
+                    stats.stopword_ratio += 1
+            return False
+        score = _quality.quality_score(chunk, symbol_ratio_max=effective_symbol_max)
+        (candidates_dir / f"{dhash[:12]}.txt").write_text(chunk, encoding="utf-8")
+        scored.append((dhash, source, score))
+        return True
+
     for source, path in iter_raw_files(raw_dir):
         stats.input_files += 1
         html = path.read_bytes().decode("utf-8", errors="replace")
@@ -221,42 +323,10 @@ def clean_corpus(cfg: dict) -> dict:
                 stats.extraction_failed += 1
             continue
         text = normalize_text(text)
-        if not min_doc <= len(text) <= max_doc:
-            stats.length += 1
-            continue
-        dhash = doc_hash(text)
-        if dhash in seen_exact:
-            stats.dup_exact += 1
-            continue
-        seen_exact.add(dhash)
-        shingles = paragraph_shingles(text, shingle_words)
-        mh = minhash_from_shingles(shingles, num_perm)
-        if mh is not None:
-            dup_of = near_dup.is_near_dup(mh, dhash)
-            if dup_of is not None:
-                stats.dup_near += 1
-                stats.dup_pairs.append([dhash[:12], str(dup_of)[:12]])
-                continue
-            if _query_holdout(holdout_near, mh):
-                stats.holdout_contamination += 1
-                continue
-        effective_symbol_max = arxiv_symbol_max if source == "arxiv" else symbol_max
-        reasons = _quality.gopher_checks(text, symbol_ratio_max=effective_symbol_max, **gopher)
-        if reasons:
-            for reason in reasons:
-                if reason == "symbol_ratio":
-                    stats.symbol_ratio += 1
-                elif reason == "mean_word_len":
-                    stats.mean_word_len += 1
-                elif reason == "punct_lines":
-                    stats.punct_lines += 1
-                elif reason == "stopword_ratio":
-                    stats.stopword_ratio += 1
-            continue
+        text = unwrap_paragraphs(text)
         stats.extracted += 1
-        score = _quality.quality_score(text, symbol_ratio_max=effective_symbol_max)
-        (candidates_dir / f"{dhash[:12]}.txt").write_text(text, encoding="utf-8")
-        scored.append((dhash, source, score))
+        for chunk in _split_into_chunks(text, max_doc):
+            process_chunk(chunk, source)
 
     # Phase 2: quality quantile cut over all surviving candidates.
     keep = _quality.keep_by_quantile(((h, s) for h, _, s in scored), keep_quantile)

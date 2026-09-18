@@ -141,8 +141,8 @@ FORBIDDEN_MARKERS = (
     "════",
 )
 
-SCAN_SUFFIXES = {".py", ".yaml", ".yml", ".md", ".sh", ".txt"}
-SCAN_FILENAMES = {"Makefile", "Dockerfile"}
+SCAN_SUFFIXES = {".py", ".yaml", ".yml", ".md", ".sh"}
+SCAN_FILENAMES = {"Makefile", "Dockerfile", "requirements.txt", "requirements-gpu.txt"}
 EXCLUDED_DIRS = {
     ".git",
     ".venv",
