@@ -93,12 +93,22 @@ def split_docs_for_training(cfg: dict, tokenizer) -> tuple[list[Path], list[Path
     return docs[:-val_n] if val_n else docs, docs[-val_n:] if val_n else []
 
 
-def build_packed_dataset(cfg: dict, tokenizer) -> tuple[Path, Path, int, int]:
-    """Pack train and val splits; return (train_prefix, val_prefix, n_train, n_val)."""
+def build_packed_dataset(
+    cfg: dict, tokenizer, train_docs: list[Path] | None = None
+) -> tuple[Path, Path, int, int]:
+    """Pack train and val splits; return (train_prefix, val_prefix, n_train, n_val).
+
+    ``train_docs`` lets the caller pass a preselected training set
+    (quarantine filter and replay buffer already applied); when it is
+    ``None`` the full cleaned corpus is used.
+    """
     profile = cfg_get(cfg, "model.profile", "nano")
     max_seq = int(cfg_get(cfg, f"model.{profile}.max_seq", 256))
     packed_dir = repo_path(cfg, "data_clean", "packed")
-    train_docs, val_docs = split_docs_for_training(cfg, tokenizer)
+    if train_docs is None:
+        train_docs, val_docs = split_docs_for_training(cfg, tokenizer)
+    else:
+        _, val_docs = split_docs_for_training(cfg, tokenizer)
     train_prefix = packed_dir / "train"
     val_prefix = packed_dir / "val"
     n_train = pack_split(tokenizer, train_docs, max_seq, train_prefix)

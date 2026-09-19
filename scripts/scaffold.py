@@ -3,8 +3,8 @@
 Idempotent: existing files are kept untouched, so running it on a
 fresh clone rebuilds any missing skeleton stub while leaving the
 implemented modules alone. The anchor files listed in ``ANCHORS`` are
-not created here — they ship with the specification package and their
-presence is only reported.
+immutable contracts: they are never generated here and their presence
+is only reported.
 """
 
 from __future__ import annotations
@@ -232,7 +232,7 @@ def main() -> None:
 
     print("anchors:")
     for rel in ANCHORS:
-        state = "present" if (ROOT / rel).is_file() else "MISSING: copy it from the specification package"
+        state = "present" if (ROOT / rel).is_file() else "MISSING: anchor contract not present"
         print(f"  {'ok' if state == 'present' else '!!'} {rel}: {state}")
 
     print("\nnext: make setup && make test")

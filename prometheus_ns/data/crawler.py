@@ -59,7 +59,7 @@ class RobotsCache:
     """Per-domain robots.txt parser with a fail-open network policy.
 
     A missing or unreachable robots.txt allows crawling; an explicit
-    ``Disallow`` for our User-Agent denies it.
+    ``Disallow`` for the configured User-Agent denies it.
     """
 
     def __init__(self, client: httpx.AsyncClient, user_agent: str) -> None:

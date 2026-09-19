@@ -111,3 +111,41 @@ def test_next_round_id_increments(prepared_repo) -> None:
     with (logs_dir / "round_metrics.jsonl").open("w", encoding="utf-8") as fh:
         fh.write(json.dumps({"round_id": 3, "val_ppl": 5.0, "diversity_ratio": 0.9}) + "\n")
     assert next_round_id(logs_dir) == 4
+
+
+def test_apply_replay_subsamples_history_deterministically(tmp_path):
+    """Replay keeps all fresh docs, subsamples history per round, is stable."""
+    import os
+    import time
+
+    docs = []
+    for i in range(10):
+        p = tmp_path / f"{i:012x}.txt"
+        p.write_text("document body", encoding="utf-8")
+        docs.append(p)
+    old = time.time() - 3600
+    for p in docs[:6]:  # first six are historical, the rest are fresh
+        os.utime(p, (old, old))
+    fresh_after = time.time() - 60
+
+    out1, stats1 = loop_module.apply_replay(docs, 0.5, 1, fresh_after)
+    out2, stats2 = loop_module.apply_replay(docs, 0.5, 1, fresh_after)
+    assert stats1["fresh"] == 4
+    assert stats1["replayed"] == 3  # round(0.5 * 6)
+    assert out1 == out2  # deterministic for a given round
+    assert len(out1) == 7  # 4 fresh + 3 replayed
+    kept_names = {p.name for p in out1}
+    assert all(p.name in kept_names for p in docs[6:])
+
+    # a different round selects a different (but equal-sized) history slice
+    out3, stats3 = loop_module.apply_replay(docs, 0.5, 2, fresh_after)
+    assert stats3["replayed"] == 3
+
+    # replay_frac 1.0 is a no-op: the cumulative corpus is the replay
+    out_full, stats_full = loop_module.apply_replay(docs, 1.0, 1, fresh_after)
+    assert stats_full["replayed"] == 0 and len(out_full) == 10
+
+    # replay_frac 0.0 keeps only the fresh material
+    out_none, stats_none = loop_module.apply_replay(docs, 0.0, 1, fresh_after)
+    assert stats_none["replayed"] == 0 and len(out_none) == 4
+    assert all(p.stat().st_mtime >= fresh_after for p in out_none)

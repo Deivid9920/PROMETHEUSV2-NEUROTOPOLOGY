@@ -111,4 +111,5 @@ loop:
   max_diversity_drop: 0.2
   holdout_sha256: 62d8992a3add265c68990949c7a4100ad412cd4c0b3f4d6f22153280d565d54e
   round_timeout_s: 10800
+  replay_frac: 1.0
   new_docs_per_round: 50000

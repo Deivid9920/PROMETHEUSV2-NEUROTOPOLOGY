@@ -16,7 +16,7 @@ def test_setup_compute_returns_summary() -> None:
     summary = setup_compute(None)
     assert set(summary) == {"device", "intraop_threads", "interop_threads", "float32_precision"}
     assert summary["intraop_threads"] >= 1
-    assert summary["intraop_threads"] <= 8  # policy ceiling from the spec
+    assert summary["intraop_threads"] <= 8  # CPU-first thread budget ceiling
     assert summary["float32_precision"] == "high"
 
 

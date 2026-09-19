@@ -14,6 +14,7 @@ import asyncio
 import copy
 import json
 import time
+import zlib
 from pathlib import Path
 
 from prometheus_ns import cfg_get, load_config, repo_path
@@ -66,6 +67,50 @@ def quarantined_hashes(cfg: dict) -> set[str]:
                 except (json.JSONDecodeError, KeyError):
                     continue
     return stems
+
+
+def apply_replay(
+    train_docs: list[Path],
+    replay_frac: float,
+    round_id: int,
+    fresh_after: float,
+) -> tuple[list[Path], dict]:
+    """Mix a deterministic fraction of historical documents into the round.
+
+    Documents modified after ``fresh_after`` are this round's new
+    material and always stay. Older documents are subsampled to
+    ``replay_frac`` of their count; the selection is a golden-ratio
+    hash of the file name XORed with the round id, so it is
+    deterministic for a given round and spreads across rounds. A
+    ``replay_frac`` of 1.0 (the default) keeps the cumulative packed
+    corpus untouched, which is itself the strongest replay policy.
+    """
+    stats = {"fresh": len(train_docs), "replayed": 0, "kept_history": 0}
+    if replay_frac >= 1.0 or not train_docs:
+        return list(train_docs), stats
+    fresh: list[Path] = []
+    history: list[Path] = []
+    for path in train_docs:
+        try:
+            (fresh if path.stat().st_mtime >= fresh_after else history).append(path)
+        except OSError:
+            history.append(path)
+    stats["fresh"] = len(fresh)
+    keep_n = int(round(replay_frac * len(history)))
+    if keep_n >= len(history):
+        stats["kept_history"] = len(history)
+        stats["replayed"] = len(history)
+        return list(train_docs), stats
+    scored = sorted(
+        history,
+        key=lambda p: (zlib.crc32(p.name.encode("utf-8")) ^ (round_id * 0x9E3779B9))
+        & 0xFFFFFFFF,
+    )
+    kept = set(scored[:keep_n])
+    stats["kept_history"] = len(kept)
+    stats["replayed"] = len(kept)
+    merged = sorted(fresh + list(kept), key=lambda p: p.name)
+    return merged, stats
 
 
 def verify_holdout(cfg: dict) -> str:
@@ -166,11 +211,19 @@ def run_round(
         except (FileNotFoundError, KeyError):
             champion_diversity = None
 
-    # 7. Rebuild the packed dataset (holdout and quarantined docs excluded)
+    # 7. Replay buffer (catastrophic-forgetting guard): pin a fraction
+    #    of historical documents next to the round's fresh material.
+    #    Diversity was measured on the fresh corpus above on purpose:
+    #    replayed history must not distort the collapse-guard ratio.
+    replay_frac = float(cfg_get(cfg, "loop.replay_frac", 1.0))
+    train_docs, replay_stats = apply_replay(train_docs, replay_frac, round_id, started)
+    _append_jsonl(logs_dir / "loop.jsonl", {"round_id": round_id, "phase": "replay", **replay_stats})
+
+    # 8. Rebuild the packed dataset (holdout and quarantined docs excluded)
     #    and run continued pretraining: from the champion when one exists,
     #    otherwise from the latest checkpoint of a plain pretraining run,
     #    otherwise from scratch (bootstrap round).
-    build_packed_dataset(cfg, tokenizer)
+    build_packed_dataset(cfg, tokenizer, train_docs=train_docs)
     timeout_s = float(cfg_get(cfg, "loop.round_timeout_s", 10800))
     remaining_budget = timeout_s - (time.time() - started)
     init_ckpt = champion_path if champion_path.exists() else checkpoints_dir / "latest.pt"
