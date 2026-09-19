@@ -114,7 +114,7 @@ def run_suite(cfg: dict, checkpoint_path: Path | None = None) -> list[dict]:
     if not checkpoint_path.exists():
         raise RuntimeError(f"no checkpoint found: {checkpoint_path} (run make train first)")
     device = get_device()
-    model, _ = _load_model_from_checkpoint(cfg, checkpoint_path, device)
+    model, _payload, _mc = _load_model_from_checkpoint(cfg, checkpoint_path, device)
 
     defaults = dict(schema["defaults"])
     records: list[dict] = []

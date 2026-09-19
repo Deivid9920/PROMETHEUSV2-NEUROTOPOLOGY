@@ -1,4 +1,9 @@
-"""Model configuration resolved from config.yaml profiles."""
+"""Model configuration resolved from config.yaml profiles.
+
+``model.profile: auto`` defers the choice to the hardware auto-fit
+module (prometheus_ns/autofit.py); a concrete profile name behaves
+exactly as before.
+"""
 
 from __future__ import annotations
 
@@ -48,12 +53,20 @@ def model_config_from_yaml(cfg: dict, profile: str | None = None) -> ModelConfig
     Args:
         cfg: Parsed project configuration.
         profile: Override for ``model.profile``; must be one of the
-            profiles defined in config.yaml.
+            profiles defined in config.yaml. ``"auto"`` (or the config
+            value ``auto``) selects the profile by probing the
+            hardware through :mod:`prometheus_ns.autofit`.
 
     Raises:
         ValueError: If the profile is unknown or incomplete.
     """
     name = profile or cfg_get(cfg, "model.profile", "nano")
+    if name == "auto":
+        # Deferred import: autofit imports this module for parameter
+        # arithmetic, so the dependency must stay load-order safe.
+        from prometheus_ns.autofit import resolved_profile
+
+        name = resolved_profile(cfg, profile)
     values = cfg_get(cfg, f"model.{name}")
     if not isinstance(values, dict):
         raise ValueError(f"unknown model profile: {name}")

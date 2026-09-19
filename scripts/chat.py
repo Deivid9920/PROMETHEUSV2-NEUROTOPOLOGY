@@ -37,7 +37,7 @@ def load_chat_model(cfg: dict, fp32: bool) -> tuple[torch.nn.Module, object, dic
     if not checkpoint.exists():
         raise SystemExit(f"no checkpoint found in {checkpoints_dir}: run make train first")
     device = get_device()
-    model, _payload = _load_model_from_checkpoint(cfg, checkpoint, device)
+    model, _payload, _mc = _load_model_from_checkpoint(cfg, checkpoint, device)
     quantized = False
     if not fp32 and device.type == "cpu":
         model = quantize_dynamic(model, {nn.Linear})

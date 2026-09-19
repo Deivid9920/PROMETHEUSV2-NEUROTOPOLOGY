@@ -244,7 +244,7 @@ def test_profile_invariants(config_data: dict, profile: str) -> None:
 
 
 def test_active_profile_is_known(config_data: dict) -> None:
-    assert config_data["model"]["profile"] in ("nano", "small", "large")
+    assert config_data["model"]["profile"] in ("auto", "nano", "small", "large")
 
 
 @pytest.mark.parametrize("key", TRAIN_KEYS)

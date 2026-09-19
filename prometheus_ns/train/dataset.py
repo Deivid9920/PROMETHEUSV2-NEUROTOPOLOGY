@@ -102,7 +102,9 @@ def build_packed_dataset(
     (quarantine filter and replay buffer already applied); when it is
     ``None`` the full cleaned corpus is used.
     """
-    profile = cfg_get(cfg, "model.profile", "nano")
+    from prometheus_ns.autofit import resolved_profile
+
+    profile = resolved_profile(cfg)
     max_seq = int(cfg_get(cfg, f"model.{profile}.max_seq", 256))
     packed_dir = repo_path(cfg, "data_clean", "packed")
     if train_docs is None:

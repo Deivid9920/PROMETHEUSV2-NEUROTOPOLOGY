@@ -118,7 +118,9 @@ def train_tokenizer(cfg: dict) -> dict:
         Report dictionary also persisted to
         ``artifacts/tokenizer/report.json``.
     """
-    profile = cfg_get(cfg, "model.profile", "nano")
+    from prometheus_ns.autofit import resolved_profile
+
+    profile = resolved_profile(cfg)
     if profile == "nano":
         vocab = int(cfg_get(cfg, "tokenizer.vocab_nano", 8000))
     else:

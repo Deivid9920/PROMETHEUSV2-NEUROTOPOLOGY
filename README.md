@@ -51,6 +51,7 @@ make test             # structural contracts (Phase 0 verification)
 make data             # crawl, extract, clean, report
 python scripts/freeze_holdout.py --config config.yaml   # one-time holdout split
 make tokenize         # BPE tokenizer for the active profile
+make autofit          # preview the hardware probe and the profile it selects
 make train PROFILE=nano TOKENS=5e6   # smoke pretraining run on CPU
 make loop ROUNDS=1    # one self-improvement round
 make eval             # held-out perplexity and prompt suite
@@ -63,6 +64,7 @@ make chat             # REPL with dynamic int8 quantization
 |--------|---------|
 | `make data` | crawl, extract, clean, report |
 | `make tokenize` | train the BPE tokenizer for the active profile |
+| `make autofit` | preview the hardware probe and the auto-selected profile |
 | `make train PROFILE=nano TOKENS=5e6` | smoke pretraining run on CPU |
 | `make loop ROUNDS=1` | one self-improvement round |
 | `make loop ROUNDS=2 AUTO_CONTINUE=1` | skip the human gate deliberately |
@@ -98,6 +100,38 @@ part of the integrity anchor.
 | nano    | 384     | 6      | 6     | 6        | 1024 | 256     | 8000  |
 | small   | 768     | 12     | 12    | 12       | 2048 | 512     | 16000 |
 | large   | 1024    | 16     | 16    | 8 (GQA)  | 4096 | 1024    | 16000 |
+
+## Auto-fit: hardware-adaptive profiles
+
+`config.yaml` ships with `model.profile: auto`. Before the tokenizer,
+the packing step or the trainer build anything, the pipeline probes
+the machine (`prometheus_ns/autofit.py`): effective CPU count, system
+RAM, CUDA name and VRAM, MPS availability and free disk. The probe is
+mapped to a profile deterministically:
+
+| Detected hardware | Selected profile |
+|-------------------|------------------|
+| CUDA with >= 40 GB VRAM | `large` |
+| CUDA with >= 16 GB VRAM | `small` |
+| CUDA below 16 GB, or CPU-only | `nano` |
+
+Besides the profile, `fit_memory` guards the training step: it
+estimates the fp32 footprint (weights + gradients + AdamW moments +
+activations) and halves the micro-batch — doubling gradient
+accumulation so the effective batch never changes — whenever the
+configured step would not fit `ram_headroom_cpu` of RAM (or
+`ram_headroom_gpu` of VRAM). A 4 GB laptop and a 40 GB GPU therefore
+train the same code without manual retuning.
+
+Overrides, from strongest to weakest: `--profile NAME` (CLI, accepts
+`auto`), `PROMETHEUS_NS_PROFILE=NAME` (environment), `model.profile`
+(config). A concrete name always wins over detection and never probes
+the hardware, so pinned runs stay reproducible. Thresholds are
+tunable in the optional `autofit:` section of `config.yaml`; the
+chosen profile, its reason and the memory-fit decision are logged as
+the first row of `logs/metrics.jsonl`. The smoke-run configuration
+(`config.smoke.yaml`) intentionally keeps `profile: nano` so the
+recorded evidence stays reproducible on any machine.
 
 ## Measured metrics
 
@@ -179,5 +213,18 @@ pretraining siguiente, sin borrarse, para mantener la auditabilidad.
 
 Comandos equivalentes a la guía rápida: `make setup`, `make test`,
 `make data`, `python scripts/freeze_holdout.py --config config.yaml`,
-`make tokenize`, `make train PROFILE=nano TOKENS=5e6`,
+`make tokenize`, `make autofit`, `make train PROFILE=nano TOKENS=5e6`,
 `make loop ROUNDS=1`, `make eval` y `make chat`.
+
+Auto-ajuste de perfil: `config.yaml` trae `model.profile: auto`; el
+pipeline sondea la máquina (núcleos efectivos, RAM, VRAM CUDA, MPS,
+disco) y elige el perfil por reglas deterministas: CUDA con >= 40 GB
+selecciona `large`, >= 16 GB selecciona `small`, y sin acelerador se
+entrena `nano` en fp32. Además, el paso de entrenamiento se ajusta a
+la memoria disponible reduciendo el micro-batch y duplicando la
+acumulación de gradientes (el lote efectivo no cambia), de modo que el
+mismo código corre desde una laptop de 4 GB hasta una GPU de 40 GB sin
+retoques manuales. La precedencia es: `--profile` > variable de
+entorno `PROMETHEUS_NS_PROFILE` > `model.profile`; un nombre concreto
+nunca sondea el hardware, y los umbrales se ajustan en la sección
+`autofit:` de `config.yaml`.

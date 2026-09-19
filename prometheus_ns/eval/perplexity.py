@@ -26,8 +26,14 @@ from prometheus_ns.model.tokenizer_train import load_tokenizer
 BLOCK_DOCS = 256
 
 
-def _load_model_from_checkpoint(cfg: dict, checkpoint_path: Path, device: torch.device) -> tuple[TransformerLM, dict]:
-    """Instantiate the model stored in a checkpoint and load its weights."""
+def _load_model_from_checkpoint(cfg: dict, checkpoint_path: Path, device: torch.device) -> tuple[TransformerLM, dict, ModelConfig]:
+    """Instantiate the model stored in a checkpoint and load its weights.
+
+    Returns:
+        ``(model, payload, model_config)`` — the config comes from the
+        serialized profile when present and otherwise from the active
+        profile in config.yaml, which ``auto`` resolves on this machine.
+    """
     payload = torch.load(checkpoint_path, map_location=device, weights_only=False)
     profile = payload.get("profile")
     if profile:
@@ -39,7 +45,7 @@ def _load_model_from_checkpoint(cfg: dict, checkpoint_path: Path, device: torch.
     model = TransformerLM(mc).to(device)
     model.load_state_dict(payload["model_state"])
     model.eval()
-    return model, payload
+    return model, payload, mc
 
 
 @torch.no_grad()
@@ -105,12 +111,12 @@ def evaluate_checkpoint_on_holdout(cfg: dict, tokenizer, checkpoint_path: Path, 
     from prometheus_ns.device import get_device
 
     device = get_device()
-    model, _payload = _load_model_from_checkpoint(cfg, checkpoint_path, device)
+    model, _payload, mc = _load_model_from_checkpoint(cfg, checkpoint_path, device)
     if int8:
         model = quantize_dynamic(model, {nn.Linear})
-    profile = cfg_get(cfg, "model.profile", "nano")
-    max_seq = int(cfg_get(cfg, f"model.{profile}.max_seq", 256))
-    ppl, tokens = perplexity_of_docs(model, tokenizer, docs, max_seq, device)
+    # max_seq follows the checkpoint's own profile so evaluations stay
+    # valid even when config.yaml now says auto on different hardware.
+    ppl, tokens = perplexity_of_docs(model, tokenizer, docs, mc.max_seq, device)
     return {"ppl": round(ppl, 4), "tokens": tokens, "docs": len(docs), "int8": int8, "holdout_digest": digest}
 
 

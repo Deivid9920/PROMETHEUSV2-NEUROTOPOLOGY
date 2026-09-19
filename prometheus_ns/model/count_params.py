@@ -38,8 +38,15 @@ def component_table(mc: ModelConfig) -> dict[str, int]:
     }
 
 
-def count_profile(cfg: dict, profile: str, materialize: bool = False) -> dict:
-    """Return the parameter report for one profile."""
+def count_profile(cfg: dict, profile: str | None = None, materialize: bool = False) -> dict:
+    """Return the parameter report for one profile.
+
+    ``profile`` may be ``None``/``"auto"``: the report is produced for
+    the profile the hardware auto-fit would resolve on this machine.
+    """
+    from prometheus_ns.autofit import resolve_profile
+
+    profile = resolve_profile(cfg, profile)["profile"]
     mc = model_config_from_yaml(cfg, profile)
     total = analytic_param_count(mc)
     if materialize:

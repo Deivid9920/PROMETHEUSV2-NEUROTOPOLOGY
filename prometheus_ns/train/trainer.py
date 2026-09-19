@@ -30,6 +30,7 @@ import torch
 from torch import nn
 
 from prometheus_ns import cfg_get, ensure_dir, load_config, repo_path
+from prometheus_ns.autofit import detect_hardware, fit_memory, resolve_profile
 from prometheus_ns.device import autocast_ctx, get_device, setup_compute
 from prometheus_ns.model.config import ModelConfig, model_config_from_yaml
 from prometheus_ns.model.model import EOS_ID, PAD_ID, TransformerLM
@@ -107,7 +108,9 @@ def train(
 
     Args:
         cfg: Parsed project configuration.
-        profile: Model profile name (nano|small|large).
+        profile: Model profile name (nano|small|large) or ``None``/
+            ``"auto"`` to resolve it from the environment and the
+            hardware auto-fit rules (prometheus_ns/autofit.py).
         tokenizer: Trained ``tokenizers.Tokenizer`` for packing.
         max_tokens: Token budget override; defaults to the
             ``tokens_per_round_{cpu,gpu}`` config value for the device.
@@ -137,6 +140,8 @@ def train(
     random.seed(seed)
 
     device = get_device()
+    fit = resolve_profile(cfg, profile)
+    profile = fit["profile"]
     mc: ModelConfig = model_config_from_yaml(cfg, profile)
     model = TransformerLM(mc).to(device)
 
@@ -148,6 +153,15 @@ def train(
     checkpoint_every = int(cfg_get(cfg, "train.checkpoint_every_steps", 2000))
     micro_batch = int(cfg_get(cfg, f"train.micro_batch.{device.type}", 16))
     grad_accum = int(cfg_get(cfg, f"train.grad_accum.{device.type}", 4))
+    hardware = fit["hardware"] if fit["hardware"] is not None else detect_hardware()
+    micro_batch, grad_accum, memory_fit_adjusted, estimated_step_gb = fit_memory(
+        hardware, mc, device.type, micro_batch, grad_accum, cfg
+    )
+    if memory_fit_adjusted:
+        print(
+            f"[autofit] micro_batch scaled to {micro_batch} and grad_accum to {grad_accum} "
+            f"to fit the {device.type} memory budget (effective batch unchanged)"
+        )
     use_bf16 = bool(cfg_get(cfg, "train.use_bf16_gpu", True)) and device.type == "cuda"
 
     if device.type == "cpu":
@@ -266,7 +280,7 @@ def train(
     model.train()
     apply_lr()
     if step == 0:
-        log_row({"step": 0, "device_summary": summary, "phase": "start", "total_steps": total_steps, "tokens_per_step": tokens_per_step})
+        log_row({"step": 0, "device_summary": summary, "phase": "start", "total_steps": total_steps, "tokens_per_step": tokens_per_step, "autofit": {"profile": profile, "source": fit["source"], "micro_batch": micro_batch, "grad_accum": grad_accum, "memory_fit_adjusted": memory_fit_adjusted, "estimated_step_gb": estimated_step_gb}})
 
     while step < total_steps:
         if timeout_s is not None and time.time() - started > timeout_s:
@@ -317,6 +331,8 @@ def train(
         "duration_s": round(duration, 1),
         "interrupted": interrupted,
         "device": str(device),
+        "profile": profile,
+        "autofit": {"source": fit["source"], "reason": fit["reason"], "memory_fit_adjusted": memory_fit_adjusted},
     }
     log_row({"step": step, "phase": "end", "tokens_s": result["tokens_s"], "duration_s": result["duration_s"], "final_val_ppl": result["final_val_ppl"]})
     return result
@@ -342,7 +358,12 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="Prometheus-NS trainer")
     parser.add_argument("--config", required=True, help="path to config.yaml")
-    parser.add_argument("--profile", required=True, help="model profile name")
+    parser.add_argument(
+        "--profile",
+        default=None,
+        choices=("auto", "nano", "small", "large"),
+        help="model profile name; 'auto' (or the config value auto) probes the hardware and adapts",
+    )
     parser.add_argument("--max-tokens", default=None, help="token budget override for this run")
     parser.add_argument("--resume", default=None, help="checkpoint path to resume exactly")
     args = parser.parse_args()

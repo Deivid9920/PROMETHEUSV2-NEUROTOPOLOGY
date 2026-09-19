@@ -38,7 +38,8 @@ tokenizer:
   sample_mb: 200          # corpus sample used to train the BPE tokenizer
 
 model:
-  profile: nano           # nano | small | large (large: GPU only, phase 8)
+  profile: auto          # auto | nano | small | large; auto probes the hardware
+                         # and adapts (prometheus_ns/autofit.py, thresholds below)
   nano:
     d_model: 384
     n_layer: 6
@@ -122,3 +123,10 @@ loop:
   round_timeout_s: 10800  # 3 h wall-clock budget per round on CPU
   new_docs_per_round: 50000
   replay_frac: 1.0        # fraction of historical documents replayed each round; 1.0 keeps the cumulative packed corpus
+
+autofit:                  # hardware auto-fit policy, read only when model.profile is auto
+  large_min_vram_gb: 40   # CUDA VRAM before auto may select the large profile
+  small_min_vram_gb: 16   # CUDA VRAM before auto may select the small profile
+  cpu_max_profile: nano   # highest profile allowed without a CUDA accelerator
+  ram_headroom_cpu: 0.5   # fraction of system RAM usable for training tensors
+  ram_headroom_gpu: 0.6   # fraction of VRAM usable for training tensors
