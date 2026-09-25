@@ -32,51 +32,51 @@ QUANT_FLAG := $(if $(filter 0,$(QUANT)),--fp32,--int8)
 #   scripts/chat.py              --config PATH (--int8 | --fp32)
 
 setup:
-        test -f requirements.txt || { echo "requirements.txt missing: create it first"; exit 1; }
-        $(PYTHON) -m venv $(VENV)
-        $(PIP) install --upgrade pip
-        $(PIP) install "torch>=2.3,<2.5" --index-url $(TORCH_CPU_INDEX)
-        $(PIP) install -r requirements.txt
-        $(PY) -m spacy download en_core_web_sm
+	test -f requirements.txt || { echo "requirements.txt missing: create it first"; exit 1; }
+	$(PYTHON) -m venv $(VENV)
+	$(PIP) install --upgrade pip
+	$(PIP) install "torch>=2.3,<2.5" --index-url $(TORCH_CPU_INDEX)
+	$(PIP) install -r requirements.txt
+	$(PY) -m spacy download en_core_web_sm
 
 setup-gpu:
-        test -f requirements-gpu.txt || { echo "requirements-gpu.txt missing: see docs/gpu_migration.md"; exit 1; }
-        $(PIP) install -r requirements-gpu.txt
+	test -f requirements-gpu.txt || { echo "requirements-gpu.txt missing: see docs/gpu_migration.md"; exit 1; }
+	$(PIP) install -r requirements-gpu.txt
 
 data:
-        $(PY) -m prometheus_ns.data.crawler  --config config.yaml
-        $(PY) -m prometheus_ns.data.cleaner  --config config.yaml
-        $(PY) -m prometheus_ns.data.reporter --config config.yaml
+	$(PY) -m prometheus_ns.data.crawler  --config config.yaml
+	$(PY) -m prometheus_ns.data.cleaner  --config config.yaml
+	$(PY) -m prometheus_ns.data.reporter --config config.yaml
 
 tokenize:
-        $(PY) -m prometheus_ns.model.tokenizer_train --config config.yaml
+	$(PY) -m prometheus_ns.model.tokenizer_train --config config.yaml
 
 autofit:
-        $(PY) -m prometheus_ns.autofit --config config.yaml
+	$(PY) -m prometheus_ns.autofit --config config.yaml
 
 train:
-        $(PY) -m prometheus_ns.train.trainer --config config.yaml --profile $(PROFILE) --max-tokens $(TOKENS)
+	$(PY) -m prometheus_ns.train.trainer --config config.yaml --profile $(PROFILE) --max-tokens $(TOKENS)
 
 eval:
-        $(PY) -m prometheus_ns.eval.perplexity   --config config.yaml
-        $(PY) -m prometheus_ns.eval.prompt_suite --config config.yaml
+	$(PY) -m prometheus_ns.eval.perplexity   --config config.yaml
+	$(PY) -m prometheus_ns.eval.prompt_suite --config config.yaml
 
 loop:
-        $(PY) -m prometheus_ns.autoloop.loop --config config.yaml --rounds $(ROUNDS) $(AUTO_FLAG)
+	$(PY) -m prometheus_ns.autoloop.loop --config config.yaml --rounds $(ROUNDS) $(AUTO_FLAG)
 
 chat:
-        $(PY) scripts/chat.py --config config.yaml $(QUANT_FLAG)
+	$(PY) scripts/chat.py --config config.yaml $(QUANT_FLAG)
 
 test:
-        $(PY) -m pytest tests -v
+	$(PY) -m pytest tests -v
 
 lint:
-        $(PY) -m compileall -q prometheus_ns scripts
-        @command -v ruff >/dev/null 2>&1 && ruff check prometheus_ns scripts || echo "ruff not installed: syntax check only"
+	$(PY) -m compileall -q prometheus_ns scripts
+	@command -v ruff >/dev/null 2>&1 && ruff check prometheus_ns scripts || echo "ruff not installed: syntax check only"
 
 docker-build:
-        @test -f Dockerfile || { echo "Dockerfile not present yet"; exit 1; }
-        docker build -t prometheus-ns .
+	@test -f Dockerfile || { echo "Dockerfile not present yet"; exit 1; }
+	docker build -t prometheus-ns .
 
 clean:
-        find . -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -exec rm -rf {} +
+	find . -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -exec rm -rf {} +
