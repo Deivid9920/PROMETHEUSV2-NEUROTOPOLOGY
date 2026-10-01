@@ -18,9 +18,12 @@ have produced a false negative on S2; it is corrected here. Never feed
 R3b to the veto.
 
 Determinism: triplets are sorted and deduplicated before building the
-graph, so cycle enumeration order is reproducible. simple_cycles is
-bounded by max_cycle_len and the census by max_cycles (truncation is
-reported, never silent).
+graph, so cycle enumeration order is reproducible. The census uses a
+BOUNDED DFS (depth <= max_cycle_len, work and count capped) because a
+plain simple_cycles enumeration on a dense top-K graph yields an
+astronomical number of long cycles that no CPU budget survives; either
+cap being hit makes truncated=True (the reported count is a floor,
+never silent).
 """
 
 from __future__ import annotations
@@ -28,7 +31,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import networkx as nx
 import numpy as np
 
 from prometheus_ns import cfg_get, load_config, repo_path
@@ -99,33 +101,60 @@ def build_isa_graph(triplets: list[dict], topk: int | None,
 
 
 def census_directed_cycles(graph: dict, max_cycle_len: int = 5,
-                           max_cycles: int = 10000) -> tuple[list[dict], bool]:
+                           max_cycles: int = 10000,
+                           max_work: int = 2_000_000) -> tuple[list[dict], bool]:
     """R3a census: directed simple cycles with min edge confidence.
 
-    Returns (cycles, truncated); truncated is True when more cycles than
-    max_cycles exist (enumeration stops at the first excess). Cycle
-    order is deterministic: by length then by path tuple.
+    Bounded DFS (depth <= max_cycle_len) instead of unbounded
+    simple_cycles enumeration: on a dense top-K graph the number of
+    LONG simple cycles is astronomical and a generator that filters them
+    still enumerates them, which no CPU budget survives. Each cycle is
+    reported once at its minimal node (canonical rotation). Work and
+    count are both capped; either cap being hit makes truncated=True
+    (pinned semantics: the reported count is a floor, never silent).
+    Returns (cycles, truncated); cycle order is deterministic.
     """
-    digraph = nx.DiGraph()
-    for u, targets in graph.items():
-        for v, payload in targets.items():
-            digraph.add_edge(u, v, conf=float(payload["conf"]))
+    nodes = sorted({u for u in graph} | {v for t in graph.values()
+                                         for v in t})
+    index = {name: i for i, name in enumerate(nodes)}
+    successors = {
+        index[u]: {index[v]: float(p["conf"]) for v, p in targets.items()}
+        for u, targets in graph.items() for v in targets
+    }
 
     cycles: list[dict] = []
     truncated = False
-    for cycle in nx.simple_cycles(digraph):
-        if len(cycle) > max_cycle_len:
-            continue
-        if len(cycles) >= max_cycles:
-            truncated = True
+    work = 0
+    for start in range(len(nodes)):
+        # canonical rotation: a cycle is reported at its minimal node
+        stack = [(start, [start], {start})]
+        while stack:
+            current, path, on_path = stack.pop()
+            for nxt in sorted(successors.get(current, {}), reverse=True):
+                work += 1
+                if work > max_work:
+                    truncated = True
+                    stack.clear()
+                    break
+                if nxt == start and len(path) >= 2:
+                    if len(cycles) < max_cycles:
+                        confs = [successors[path[k]][path[(k + 1) % len(path)]]
+                                 for k in range(len(path))]
+                        cycles.append({
+                            "path": [nodes[i] for i in path],
+                            "min_conf": float(min(confs))})
+                    else:
+                        truncated = True
+                        stack.clear()
+                        break
+                elif nxt > start and nxt not in on_path \
+                        and len(path) < max_cycle_len:
+                    stack.append((nxt, path + [nxt], on_path | {nxt}))
+            if truncated:
+                break
+        if truncated:
             break
-        confs = [digraph[cycle[k]][cycle[(k + 1) % len(cycle)]]["conf"]
-                 for k in range(len(cycle))]
-        cycles.append({"path": [str(x) for x in cycle],
-                       "min_conf": float(min(confs))})
-    # Pinned semantics (tests/test_topo_graph.py): reaching the cap makes
-    # the census truncated BY DEFINITION -- the reported count is a floor,
-    # never silently presented as exact.
+
     truncated = truncated or len(cycles) >= max_cycles
     cycles.sort(key=lambda c: (len(c["path"]), tuple(c["path"]),
                                -c["min_conf"]))

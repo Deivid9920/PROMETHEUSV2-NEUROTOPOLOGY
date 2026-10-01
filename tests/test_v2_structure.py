@@ -115,7 +115,10 @@ def test_anchors_are_not_stubs() -> None:
         "exact bottleneck must use the assignment solver")
     graph = (REPO_ROOT / "prometheus_ns/topo/graph_topology.py"
              ).read_text(encoding="utf-8")
-    assert "simple_cycles" in graph, "R3a census must use networkx cycles"
+    # The census is a BOUNDED DFS: a plain simple_cycles enumeration on a
+    # dense top-K graph cannot survive any CPU budget (V2.1 docstring).
+    assert "census_directed_cycles" in graph and "max_work" in graph, \
+        "R3a census must be the bounded-DFS implementation"
     assert "Never feed" in graph or "never vetoed" in graph.lower() or \
         "observation only" in graph, "R3b honest reading must be stated"
     report = (REPO_ROOT / "scripts/divergence_report.py").read_text(

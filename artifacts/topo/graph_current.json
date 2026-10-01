@@ -1,0 +1,441 @@
+{
+ "count": 1327.0,
+ "n_entities": 798,
+ "truncated": true,
+ "cycles": [
+  {
+   "path": [
+    "absalom",
+    "brother"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "brother"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "son",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "accident",
+    "name",
+    "wagner"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "advantage",
+    "influence",
+    "question"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "affair",
+    "what",
+    "idea"
+   ],
+   "min_conf": 0.9
+  },
+  {
+   "path": [
+    "affection",
+    "love",
+    "wife"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "affection",
+    "object",
+    "who"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "age",
+    "woman",
+    "who"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "all",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "boy",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "christian",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "david",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "fellow",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "fellow",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "man",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "man",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "son",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "brother",
+    "who",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "all",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "all",
+    "brother"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "armand",
+    "brother"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "both",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "boy",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "brother",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "brother",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "child",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "child",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "dunroe",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "father",
+    "brother"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "father",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "fellow",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "fellow",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "fenton",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "friend",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "gentleman",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "gun",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "hath",
+    "brother"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "head",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "hero",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "kind",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "king",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "lidhurst",
+    "boy"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "nay",
+    "son"
+   ],
+   "min_conf": 0.6
+  },
+  {
+   "path": [
+    "absalom",
+    "man",
+    "person",
+    "son"
+   ],
+   "min_conf": 0.6
+  }
+ ]
+}
