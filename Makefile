@@ -80,3 +80,20 @@ docker-build:
 
 clean:
 	find . -type d \( -name __pycache__ -o -name .pytest_cache \) -prune -exec rm -rf {} +
+
+MODE ?= dup_flood
+RID ?= 1
+
+topo-extract:
+	$(PY) scripts/run_round_v2.py --config config.yaml --topo-only
+
+topo-graph:
+	$(PY) -c "from prometheus_ns.topo.graph_topology import snapshot_current; snapshot_current('config.yaml')"
+
+topo: topo-extract topo-graph
+
+stress:
+	$(PY) scripts/run_round_v2.py --config config.yaml --stress $(MODE) --round-id $(RID)
+
+divergence-report:
+	$(PY) scripts/divergence_report.py --config config.yaml

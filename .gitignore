@@ -21,3 +21,6 @@ artifacts/checkpoints/*
 
 # Figures are reproducible from logs
 docs/*.png
+
+# Diversity sample: rebuilt every round from data_clean
+docs/_diversity_sample/

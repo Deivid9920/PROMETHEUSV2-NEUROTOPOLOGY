@@ -130,3 +130,25 @@ autofit:                  # hardware auto-fit policy, read only when model.profi
   cpu_max_profile: nano   # highest profile allowed without a CUDA accelerator
   ram_headroom_cpu: 0.5   # fraction of system RAM usable for training tensors
   ram_headroom_gpu: 0.6   # fraction of VRAM usable for training tensors
+
+topo:
+  probe_sentences: 256
+  layers: [2, 5]
+  subsample: 500
+  maxdim: 1
+  geometry: {method: pca, n_components: 32, normalize: true}  # FROZEN at Fase 0-V2 (A1/A2)
+  eps_betti: 0.3
+  churn_bottleneck: 0.15    # initial calibration value; recalibrated only in Fase 1-V2 / N1-N3, frozen before S1
+  b0_collapse_ratio: 0.5
+  h1_growth_max: 0.25
+  graph_topk: 800
+  graph_conf_min: 0.6
+  isa_relation: "is_a"
+  max_cycle_len: 5
+  max_cycles: 10000
+  seed: 42
+
+stress:
+  modes: [dup_flood, contradiction_flood, lr_spike]
+  dup_ratio: 0.9
+  lr_multiplier: 10

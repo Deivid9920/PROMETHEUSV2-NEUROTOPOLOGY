@@ -18,3 +18,5 @@ pyyaml>=6,<7
 pytest>=8,<9
 tqdm>=4.66,<4.68
 psutil>=5.9,<6
+ripser>=0.6,<0.7
+scipy>=1.11,<1.15
