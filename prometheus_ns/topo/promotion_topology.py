@@ -106,13 +106,19 @@ def _half_persistence(diag: np.ndarray) -> np.ndarray:
 
 
 def _pairwise_linf(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Pairwise L-infinity distances between two (n, 2) / (m, 2) arrays."""
+    """Pairwise L-infinity distances between two (n, 2) / (m, 2) arrays.
+
+    Essential classes (death = inf) pair with each other at |birth1 -
+    birth2| (the inf-inf difference is 0, never nan) and can never match
+    a finite point (inf cost), so they must fall to their common class
+    across diagrams or to their own diagonal at price inf."""
     if len(a) == 0 or len(b) == 0:
         return np.empty((len(a), len(b)))
-    return np.maximum(
-        np.abs(a[:, None, 0] - b[None, :, 0]),
-        np.abs(a[:, None, 1] - b[None, :, 1]),
-    )
+    birth_gap = np.abs(a[:, None, 0] - b[None, :, 0])
+    with np.errstate(invalid="ignore"):
+        death_gap = np.abs(a[:, None, 1] - b[None, :, 1])
+    death_gap = np.where(np.isnan(death_gap), 0.0, death_gap)
+    return np.maximum(birth_gap, death_gap)
 
 
 def _feasible(costs: np.ndarray, hp_a: np.ndarray, hp_b: np.ndarray,

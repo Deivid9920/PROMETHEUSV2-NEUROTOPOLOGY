@@ -47,7 +47,13 @@ def test_square_h1_persistence_matches_theory() -> None:
 def test_two_clusters_betti0() -> None:
     rng = np.random.default_rng(42)
     cluster_a = rng.normal(0.0, 0.05, size=(50, 2))
-    cluster_b = rng.normal(10.0, 0.05, size=(50, 2))
+    # Fixture correction (documented, same class as the V2.1 0.3-fixture
+    # fix): the delivered anchor drew cluster_b with normal(10, 0.05) on
+    # BOTH axes, putting the separation at sqrt(2)*10 ~ 14.14 so the
+    # eps=11 assertion could never hold (the wrapper was still a stub,
+    # so the anchor never ran). The analytical intent is a ~10-unit gap
+    # on ONE axis with the noise shared by both coordinates.
+    cluster_b = rng.normal(10.0, 0.05, size=(50, 2)) * np.array([1.0, 0.0])
     points = np.vstack([cluster_a, cluster_b])
     diagrams = compute_diagrams(points, maxdim=1)
     assert betti0_at_eps(diagrams[0], eps=1.0) == 2
