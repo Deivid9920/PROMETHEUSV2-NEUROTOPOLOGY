@@ -228,3 +228,89 @@ retoques manuales. La precedencia es: `--profile` > variable de
 entorno `PROMETHEUS_NS_PROFILE` > `model.profile`; un nombre concreto
 nunca sondea el hardware, y los umbrales se ajustan en la sección
 `autofit:` de `config.yaml`.
+
+## PROMETHEUS-V2
+
+Capa de neurotopología (análisis topológico de datos) sobre el ciclo de
+auto-mejora: la topología de los espacios internos del modelo y del grafo
+simbólico gana DERECHO DE VETO sobre la promoción. El gate heredado no se
+modifica; el gate V2 es compuesto:
+
+```mermaid
+flowchart TD
+    A[candidato entrenado] --> B[eval NS: ppl holdout congelado + diversidad]
+    A --> C[topo-extract: diagramas de persistencia\nactivaciones probe, geometria congelada]
+    A --> D[topo-graph: censo R3a triangulos dirigidos\n+ R3b Rips observacion]
+    B --> E{decide_promotion NS\n[inmutable]}
+    C --> F{decide_topo_veto\n[ancla, no editar]}
+    D --> F
+    E -->|promote ∧ no veto| G[PROMOCION]
+    E -->|promote ∧ veto| H[CASO ESTRELLA:\nla topologia bloquea]
+    E -->|reject| I[se mantiene champion]
+```
+
+Tres reglas cierran el veto (ancla `prometheus_ns/topo/promotion_topology.py`,
+bottleneck exacto por asignación rectangular con extremos requeridos — el
+atajo de suma-mínima está matematicamente refutado en
+`tests/test_topo_promotion.py`):
+
+- **R1 churn estructural**: distancia bottleneck (H0/H1 sobre el cloud de
+  activaciones concatenado, capas 2 y 5) > 0.15 sin ganancia relativa de
+  ppl >= 0.02 que la excuse.
+- **R2 colapso representacional**: betti0@eps=0.3 < 0.5 x el MÍNIMO
+  HISTÓRICO (D3) de betti0.
+- **R3 crecimiento ciclico simbólico (R3a)**: censo EXACTO de triángulos
+  dirigidos con confianza >= 0.6 sobre el top-800 de entidades > 1.25 x el
+  del champion. R3b (H1-Rips sobre d(u,v)=1-conf) se registra, jamás vetoa:
+  bajo esa filtración los ciclos de alta confianza se cierran temprano.
+
+### Calibración del sensor (A3)
+
+Mismo checkpoint, 5 seeds de subsample -> p95 del self-bottleneck =
+**0.0963 < churn_bottleneck = 0.15**: el umbral congelado supera el piso
+de ruido del sensor (`artifacts/topo/self_noise.json`).
+
+### Protocolo de divergencia deliberada (el experimento central)
+
+3 rondas normales (N1-N3, ventana de calibración) -> congelación
+verificada por `config_sha256` (B1) -> 3 rondas de estrés. Integridad
+mecánica (V1-V5) en `scripts/divergence_report.py`; tasas con intervalos
+Wilson exactos; framing de case study.
+
+| ronda | tipo | NS | veto | divergencia | daño (B5, externo) |
+|---|---|---|---|---|---|
+| 1 | baseline | promovida | - | - | - |
+| 2-3 | normal | promovidas | no | no | - |
+| 4 | dup_flood | promovida | no | no | - |
+| 5 | contradiction_flood | promovida (ppl 50.4) | **SI (R3: 1483 > 1275)** | **SI** | **damage evidence** |
+| 6 | lr_spike | rechazada (ppl 2376.8) | si (R1+R2: redundante) | no | - |
+
+**Resultado medido**: el veto topológico disparó donde las métricas
+superficiales aprobaban exactamente en el modo diseñado para ello
+(contradicción taxonómica plantada: +46% triángulos dirigidos), y la
+clasificación externa al gate confirma daño real. El dup_flood mejora la
+ppl superficial (memorización) SIN daño estructural detectable — el veto
+no dispara: diferencia de criterios documentada, no falsa alarma. El
+lr_spike es detectado por ambos gates (ppl Y topología, redundancia
+honesta). Tasas: normal 0/2, estrés 1/3, Wilson 95% [0.061, 0.792].
+
+### Notebooks TDA
+
+`05_model_topology.ipynb` (diagramas por capa/ronda, betti0 con mínimo
+histórico, self-noise), `06_graph_topology.ipynb` (censo R3a con aristas,
+R3b con lectura honesta, cruce con cuarentena NS),
+`07_divergence_study.ipynb` (tabla de divergencia con Wilson, ppl vs
+bottleneck, caso estrella). Leen SOLO los JSON estructurados
+(`logs/topo.jsonl`, `logs/promotion_decisions.jsonl`, E1).
+
+### Límites honestos
+
+- n pequeño: los intervalos Wilson SON el resultado; nada de tasas
+  poblacionales.
+- Umbrales calibrados en un modelo, una seed, una política geométrica
+  (PCA 32 + normalización, congelada en Fase 0-V2).
+- R3b depende del top-K; la topología DESCRIBE geometría, no causa
+  calidad; divergencia sin veredicto de daño no prueba utilidad del veto.
+- El champion fue regenerado tras pérdida de checkpoints del sandbox
+  (Fase -1, pipeline NS determinista documentado en el historial); el
+  holdout permaneció bit-exacto (`loop.holdout_sha256`).

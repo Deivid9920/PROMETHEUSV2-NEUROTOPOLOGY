@@ -161,6 +161,30 @@ def census_directed_cycles(graph: dict, max_cycle_len: int = 5,
     return cycles, truncated
 
 
+def triangle_census(graph: dict) -> int:
+    """EXACT count of directed triangles (3-cycles) = trace(A^3) / 3.
+
+    The veto input for R3a. The general length-5 census is budget-bound
+    on a dense top-K graph (both clean and degraded graphs saturate any
+    work cap, so their floors measure the budget, not the graph); the
+    triangle count is exact, deterministic and budget-free, and directed
+    triangles are the dominant shape of real taxonomic contradictions
+    (A->B->C->A). A planted or real confidence-closed triangle moves this
+    number; the R3 ceiling (1.25x champion) compares exact counts.
+    """
+    nodes = sorted({u for u in graph} | {v for t in graph.values()
+                                         for v in t})
+    index = {name: i for i, name in enumerate(nodes)}
+    n = len(nodes)
+    adjacency = np.zeros((n, n), dtype=np.int64)
+    for u, targets in graph.items():
+        for v in targets:
+            adjacency[index[u], index[v]] = 1
+    if n == 0:
+        return 0
+    return int(np.trace(adjacency @ adjacency @ adjacency) // 3)
+
+
 def graph_cycle_count(graph: dict, max_cycle_len: int = 5,
                       max_cycles: int = 10000) -> tuple[float, dict]:
     """R3a scalar for the veto (graph_h1_count slot) + audit details."""

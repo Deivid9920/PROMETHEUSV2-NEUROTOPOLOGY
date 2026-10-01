@@ -31,9 +31,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 import time
 from dataclasses import replace
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 
@@ -48,7 +51,7 @@ from prometheus_ns.symbolic.consistency import run_consistency
 from prometheus_ns.symbolic.extractor import extract_corpus
 from prometheus_ns.topo.graph_topology import (
     adjacency_distance_matrix, build_isa_graph, graph_cycle_count,
-    load_triplets, rips_h1_persistence,
+    load_triplets, rips_h1_persistence, triangle_census,
 )
 from prometheus_ns.topo.promotion_topology import (
     TopoMetrics, TopoRules, bottleneck_distance, betti0_at_eps,
@@ -161,37 +164,59 @@ def _champion_sha256(cfg: dict) -> str | None:
 
 
 def measure_checkpoint_topology(cfg: dict, checkpoint: Path) -> dict:
-    """Diagrams + betti0 for one checkpoint under the frozen geometry."""
+    """Diagrams + betti0 for one checkpoint under the FROZEN geometry.
+
+    The gate input (anchor contract) is the diagram of the CONCATENATED
+    per-layer activation cloud: 256 probes x |layers| points, geometry-
+    projected (PCA 32 + normalization, A1/A2), subsampled to
+    config.topo.subsample. Per-layer diagrams are kept for the notebook
+    cache only.
+    """
     from prometheus_ns.topo.activations import (
         extract_probe_activations, tensor_sha256,
     )
     from prometheus_ns.topo.persistence import compute_diagrams
 
     topo_cfg = cfg["topo"]
+    geometry = dict(topo_cfg["geometry"])
     tensor_hash = tensor_sha256(checkpoint)
     activations = extract_probe_activations(cfg, checkpoint)
     per_layer = {}
     for layer, points in activations.items():
         diagrams = compute_diagrams(
             points, maxdim=int(topo_cfg["maxdim"]),
-            subsample=int(topo_cfg["subsample"]),
-            seed=int(topo_cfg["seed"]))
+            subsample=int(topo_cfg["subsample"]), seed=int(topo_cfg["seed"]),
+            geometry=geometry)
         per_layer[str(layer)] = {
             "h0": diagrams[0], "h1": diagrams[1],
             "betti0": betti0_at_eps(diagrams[0], float(topo_cfg["eps_betti"])),
         }
-    h0_all = np.concatenate([p["h0"] for p in per_layer.values()]) \
-        if per_layer else None
-    h1_all = np.concatenate([p["h1"] for p in per_layer.values()]) \
-        if per_layer else None
+    concat = np.concatenate(
+        [activations[str(l)] for l in sorted(activations,
+                                             key=lambda x: int(x))], axis=0)
+    gate_diagrams = compute_diagrams(
+        concat, maxdim=int(topo_cfg["maxdim"]),
+        subsample=int(topo_cfg["subsample"]), seed=int(topo_cfg["seed"]),
+        geometry=geometry)
+    gate_betti0 = betti0_at_eps(gate_diagrams[0],
+                                float(topo_cfg["eps_betti"]))
     return {"tensor_sha256": tensor_hash, "layers": per_layer,
-            "h0": h0_all, "h1": h1_all}
+            "h0": gate_diagrams[0], "h1": gate_diagrams[1],
+            "betti0": gate_betti0,
+            "n_points": int(len(concat))}
 
 
-def measure_graph_topology(cfg: dict) -> tuple[float, float | None, dict]:
-    """R3a census (veto input) + R3b Rips-H1 (observation only)."""
+def measure_graph_topology(cfg: dict, triplets_path: Path | None = None,
+                           champion_baseline: bool = False) -> tuple[float, float | None, dict]:
+    """R3a census (veto input) + R3b Rips-H1 (observation only).
+
+    triplets_path overrides the triplet source: the S2 stress round
+    measures the CANDIDATE graph over the poisoned triplets (the
+    effective symbolic material of that round, D2)."""
     topo_cfg = cfg["topo"]
-    triplets = load_triplets(repo_path(cfg, "triplets", "triplets.jsonl"))
+    if triplets_path is None:
+        triplets_path = repo_path(cfg, "triplets", "triplets.jsonl")
+    triplets = load_triplets(triplets_path)
     graph = build_isa_graph(
         triplets,
         topk=int(topo_cfg["graph_topk"]),
@@ -204,7 +229,7 @@ def measure_graph_topology(cfg: dict) -> tuple[float, float | None, dict]:
     try:
         h1_rips, _ = rips_h1_persistence(graph)
         rips_count = float(persistent_h1_count(
-            h1_rips, float(topo_cfg["h1_min_persistence"] or 0.1)))
+            h1_rips, float(topo_cfg.get("h1_min_persistence", 0.1))))
     except NotImplementedError:
         rips_count = None
     return count, rips_count, details
@@ -253,8 +278,14 @@ def run_topo_only(cfg: dict) -> dict:
         raise SystemExit("no champion.pt: train the inherited NS round first")
 
     measurement = measure_checkpoint_topology(cfg, champion)
-    betti0 = min(p["betti0"] for p in measurement["layers"].values())
-    cycles, rips_count, details = measure_graph_topology(cfg)
+    betti0 = measurement["betti0"]
+    clean_graph = build_isa_graph(
+        load_triplets(repo_path(cfg, "triplets", "triplets.jsonl")),
+        topk=int(cfg["topo"]["graph_topk"]),
+        conf_min=float(cfg["topo"]["graph_conf_min"]),
+        relation=str(cfg["topo"]["isa_relation"]))
+    cycles = float(triangle_census(clean_graph))
+    _, rips_count, details = measure_graph_topology(cfg)
     row = {
         "round_id": 0, "stress_mode": None, "kind": "topo-only",
         "config_sha256": _sha256_file(Path(cfg["_config_path"])),
@@ -277,13 +308,58 @@ def run_topo_only(cfg: dict) -> dict:
     return row
 
 
+def classify_damage(cfg: dict, manifest: dict | None,
+                    candidate_path: Path) -> str | None:
+    """B5 post-hoc classification with evidence EXTERNAL to the gate:
+    perplexity of the stress candidate vs the champion on a secondary
+    heldout drawn from the stress corpus. 'damage evidence' when the
+    candidate is clearly worse on that secondary set; 'no verdict'
+    otherwise (a difference of criteria, not proven damage)."""
+    if manifest is None:
+        return None
+    import random
+
+    import torch
+
+    from prometheus_ns.eval.perplexity import (_load_model_from_checkpoint,
+                                               perplexity_of_docs)
+    from prometheus_ns.model.tokenizer_train import load_tokenizer
+
+    docs = [Path(p) for p in manifest.get("treated_docs", [])]
+    if not docs or not docs[0].is_file():
+        return None
+    rng = random.Random(int(cfg["topo"]["seed"]) + 777)
+    sample = sorted(rng.sample(docs, min(12, len(docs))))
+    secondary = repo_path(cfg, "data_stress", manifest["mode"], "secondary")
+    secondary.mkdir(parents=True, exist_ok=True)
+    for doc in sample:
+        (secondary / doc.name).write_text(doc.read_text(encoding="utf-8"),
+                                          encoding="utf-8")
+    tokenizer = load_tokenizer(cfg)
+    champion = repo_path(cfg, "artifacts", "checkpoints", "champion.pt")
+    if not champion.is_file():
+        return None
+    device = torch.device("cpu")
+    champion_model = _load_model_from_checkpoint(cfg, champion, device)[0]
+    candidate_model = _load_model_from_checkpoint(cfg, candidate_path,
+                                                  device)[0]
+    max_seq = int(champion_model.cfg.max_seq)
+    champion_ppl, _ = perplexity_of_docs(champion_model, tokenizer,
+                                         sorted(secondary.glob("*.txt")),
+                                         max_seq, device)
+    candidate_ppl, _ = perplexity_of_docs(candidate_model, tokenizer,
+                                          sorted(secondary.glob("*.txt")),
+                                          max_seq, device)
+    if candidate_ppl > champion_ppl * 1.05:
+        return "damage evidence"
+    return "no verdict"
+
+
 def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
                  max_tokens: float | None = None) -> dict:
     """One full V2 round: NS machinery + topological sensors + composite
     gate. The NS decision logic is called INTACT (composition, not
     modification)."""
-    import numpy as np
-
     from prometheus_ns.eval.perplexity import evaluate_checkpoint_on_holdout
     from prometheus_ns.model.tokenizer_train import load_tokenizer
     from prometheus_ns.topo.activations import extract_probe_activations
@@ -294,6 +370,22 @@ def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
     champion_path = checkpoints / "champion.pt"
     digest = verify_holdout(cfg)
     config_sha = _sha256_file(Path(cfg["_config_path"]))
+
+    # stress treatment (D1/D2): degraded material + separate checkpoint
+    # directory so champion.pt can only change by a normal-round gate
+    manifest = None
+    stress_checkpoints = checkpoints
+    treated_docs = None
+    poisoned_triplets = None
+    if stress_mode:
+        from prometheus_ns.topo.stress import build_treatment
+        manifest = build_treatment(cfg, stress_mode, round_id)
+        stress_checkpoints = repo_path(cfg, "data_stress", stress_mode,
+                                       "checkpoints")
+        treated_docs = [Path(p) for p in manifest.get("treated_docs", [])]
+        poisoned = manifest.get("material", {}).get("poisoned_triplets")
+        poisoned_triplets = Path(poisoned) if poisoned else None
+
     _append_jsonl(logs_dir / "loop.jsonl",
                   {"round_id": round_id, "phase": "v2_start",
                    "stress_mode": stress_mode, "holdout": digest})
@@ -308,7 +400,10 @@ def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
     # 3. diversity of the round's training corpus (inherited machinery)
     tokenizer = load_tokenizer(cfg)
     from prometheus_ns.train.dataset import split_docs_for_training
-    train_docs, _val = split_docs_for_training(cfg, tokenizer)
+    if treated_docs is not None:
+        train_docs = treated_docs
+    else:
+        train_docs, _val = split_docs_for_training(cfg, tokenizer)
     sample_dir = repo_path(cfg, "docs", "_diversity_sample")
     sample_dir.mkdir(parents=True, exist_ok=True)
     for old in sample_dir.glob("*.txt"):
@@ -325,9 +420,17 @@ def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
             cfg, tokenizer, champion_path)["ppl"]
 
     # 5. continued pretraining -> candidate (D1: stress trains on a
-    #    temporary checkpoint; champion changes only via the gate)
+    #    separate checkpoint directory; champion changes only via the
+    #    gate on normal rounds)
     build_packed_dataset(cfg, tokenizer, train_docs=train_docs)
-    target = checkpoints / "latest.pt"
+    target = stress_checkpoints / "latest.pt"
+    lr_multiplier = int((manifest or {}).get("lr_multiplier", 1))
+    if lr_multiplier != 1:
+        # lr_spike (S3): in-memory lr mutation, no inherited file edited;
+        # the treatment manifest carries the multiplier for the audit
+        for key in ("lr_nano", "lr_small", "lr_large"):
+            if key in cfg.get("train", {}):
+                cfg["train"][key] = float(cfg["train"][key]) * lr_multiplier
     train_result = train(
         cfg, cfg_get(cfg, "model.profile", "nano"), tokenizer,
         max_tokens=max_tokens,
@@ -337,7 +440,7 @@ def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
                                  target.is_file()) else None,
         timeout_s=max(float(cfg_get(cfg, "loop.round_timeout_s", 10800))
                       - (time.time() - started), 60.0),
-        checkpoints_dir=checkpoints,
+        checkpoints_dir=stress_checkpoints,
         metrics_path=logs_dir / "metrics.jsonl")
     candidate_path = target
 
@@ -367,15 +470,25 @@ def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
         champion_topo = measure_checkpoint_topology(cfg, champion_path)
         b0_h0 = bottleneck_distance(champion_topo["h0"], candidate_topo["h0"])
         b1_h1 = bottleneck_distance(champion_topo["h1"], candidate_topo["h1"])
-        champion_betti0 = min(p["betti0"]
-                              for p in champion_topo["layers"].values())
+        champion_betti0 = champion_topo["betti0"]
     else:
         champion_topo = None
         b0_h0 = b1_h1 = 0.0
         champion_betti0 = None
-    candidate_betti0 = min(p["betti0"]
-                           for p in candidate_topo["layers"].values())
-    cycles, rips_count, graph_details = measure_graph_topology(cfg)
+    candidate_betti0 = candidate_topo["betti0"]
+    # S2: the candidate's symbolic census reads the POISONED triplets (the
+    # round's effective symbolic material); the champion baseline keeps
+    # the clean graph from the previous round's log
+    cycles, rips_count, details = measure_graph_topology(
+        cfg, triplets_path=poisoned_triplets)
+    # R3a veto input: the EXACT triangle census (budget-free); the
+    # enumerated floor and R3b stay in the audit details
+    cycles = float(triangle_census(build_isa_graph(
+        load_triplets(poisoned_triplets or repo_path(
+            cfg, "triplets", "triplets.jsonl")),
+        topk=int(cfg["topo"]["graph_topk"]),
+        conf_min=float(cfg["topo"]["graph_conf_min"]),
+        relation=str(cfg["topo"]["isa_relation"]))))
 
     topo_metrics = TopoMetrics(
         round_id=round_id,
@@ -421,7 +534,10 @@ def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
     elif not final_promote and champion_path.is_file() and not stress_mode:
         rollback_to_champion(checkpoints)
 
-    # 10. structured writes
+    # 10. structured writes (B5 damage classification on divergence)
+    damage = None
+    if topo_decision.veto and ns_decision.promote:
+        damage = classify_damage(cfg, manifest, candidate_path)
     topo_row = {
         "round_id": round_id, "stress_mode": stress_mode,
         "config_sha256": config_sha, "treatment_sha256": treatment,
@@ -435,7 +551,7 @@ def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
         "veto": topo_decision.veto,
         "establish_baseline": topo_decision.establish_baseline,
         "causes": topo_decision.causes, "checks": topo_decision.checks,
-        "graph_details_truncated": graph_details["truncated"],
+        "graph_details_truncated": details["truncated"],
         "ns_decision": {"promote": ns_decision.promote,
                         "abort": ns_decision.abort,
                         "cause": ns_decision.cause},
@@ -447,7 +563,8 @@ def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
     _append_jsonl(logs_dir / "promotion_decisions.jsonl", {
         "round_id": round_id, "ns_promote": bool(ns_decision.promote),
         "ns_cause": ns_decision.cause, "topo_veto": topo_decision.veto,
-        "final_promoted": final_promote, "damage_classification": None,
+        "final_promoted": final_promote,
+        "damage_classification": damage,
     })
     candidate_metrics = RoundMetrics(
         round_id=round_id, val_ppl=candidate_ppl,
@@ -463,7 +580,8 @@ def run_v2_round(cfg: dict, round_id: int, stress_mode: str | None = None,
               f"vetoed: {topo_decision.causes}")
     print(f"v2 round {round_id}: final_promoted={final_promote} "
           f"ns={ns_decision.promote} topo_veto={topo_decision.veto} "
-          f"ppl={candidate_ppl:.4f} R3a={cycles:.0f}")
+          f"ppl={candidate_ppl:.4f} R3a={cycles:.0f}"
+          + (f" damage={damage}" if damage else ""))
     return topo_row
 
 

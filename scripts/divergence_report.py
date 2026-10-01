@@ -74,7 +74,8 @@ def wilson_interval(successes: int, total: int, ci: float) -> tuple[float, float
     p = successes / total
     denom = 1.0 + z * z / total
     centre = (p + z * z / (2.0 * total)) / denom
-    spread = z * math.sqrt(p * (1.0 - p) / total + z * z / (4.0 * total * total))
+    spread = (z / denom) * math.sqrt(p * (1.0 - p) / total
+                                     + z * z / (4.0 * total * total))
     return (max(0.0, centre - spread), min(1.0, centre + spread))
 
 
