@@ -132,6 +132,27 @@ def verify_holdout(cfg: dict) -> str:
     return actual
 
 
+def topo_veto_from_log(logs_dir: Path, round_id: int) -> tuple[bool, list[str]]:
+    """V2 composite-gate input (C4): the topological veto for this round,
+    written by the V2 sensors into logs/topo.jsonl.
+
+    Composition, not modification: when a measurement exists its veto
+    decision composes with the NS gate (PROMOTION = NS AND NOT topo).
+    Round 1 without a measurement establishes the baseline instead (the
+    anchor handles it); the fail-closed rule (1.6) for decision rounds
+    >= 2 is enforced by the V2 runner, which owns the sensors."""
+    path = logs_dir / "topo.jsonl"
+    if path.is_file():
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row.get("round_id") == round_id:
+                    return bool(row.get("veto")), list(row.get("causes", []))
+    return False, []
+
+
 def run_round(
     cfg: dict,
     round_id: int | None = None,
@@ -266,9 +287,18 @@ def run_round(
         cfg_get(cfg, "loop.holdout_sha256"),
     )
 
-    # 9. Checkpoint lifecycle + audit trail.
-    if decision.promote and not decision.abort:
+    # 9. Checkpoint lifecycle + audit trail (C4 composite gate: the V2
+    #    topological veto composes with the untouched NS decision when a
+    #    measurement exists; the star case - NS promotes, topology
+    #    vetoes - is logged prominently, never fixed away).
+    topo_veto, topo_causes = topo_veto_from_log(logs_dir, round_id)
+    star_case = bool(decision.promote and not decision.abort and topo_veto)
+    if decision.promote and not decision.abort and not topo_veto:
         promote_checkpoint(checkpoints_dir)
+    elif star_case:
+        _append_jsonl(logs_dir / "loop.jsonl", {"round_id": round_id, "phase": "topo_veto", "causes": topo_causes})
+        print(f"V2 STAR CASE: NS promoted but the topological veto blocked "
+              f"promotion: {topo_causes}")
     elif not decision.promote and champion_path.exists():
         rollback_to_champion(checkpoints_dir)
 
@@ -281,7 +311,9 @@ def run_round(
             "diversity_ratio": diversity_ratio,
             "champion_val_ppl": champion_ppl,
             "champion_diversity": champion_diversity,
-            "decision": "aborted" if decision.abort else ("promoted" if decision.promote else "kept champion"),
+            "decision": "aborted" if decision.abort else
+            ("vetoed by topology" if star_case else
+             ("promoted" if decision.promote else "kept champion")),
             "cause": decision.cause,
             "train": {
                 "step": train_result["step"],
