@@ -1,0 +1,6 @@
+{"round_id": 1, "ns_promote": true, "ns_cause": "all promotion gates passed", "topo_veto": false, "final_promoted": true, "damage_classification": null}
+{"round_id": 2, "ns_promote": true, "ns_cause": "all promotion gates passed", "topo_veto": false, "final_promoted": true, "damage_classification": null}
+{"round_id": 3, "ns_promote": true, "ns_cause": "all promotion gates passed", "topo_veto": false, "final_promoted": true, "damage_classification": null}
+{"round_id": 4, "ns_promote": true, "ns_cause": "all promotion gates passed", "topo_veto": false, "final_promoted": true, "damage_classification": null}
+{"round_id": 5, "ns_promote": true, "ns_cause": "all promotion gates passed", "topo_veto": true, "final_promoted": false, "damage_classification": "damage evidence"}
+{"round_id": 6, "ns_promote": false, "ns_cause": "relative ppl gain -33.9363 below threshold 0.01", "topo_veto": true, "final_promoted": false, "damage_classification": null}

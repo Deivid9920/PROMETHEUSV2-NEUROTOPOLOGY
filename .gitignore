@@ -24,3 +24,11 @@ docs/*.png
 
 # Diversity sample: rebuilt every round from data_clean
 docs/_diversity_sample/
+
+# Stress checkpoints: heavy binaries, regenerable per manifest
+data_stress/**/checkpoints/
+
+# Figures are reproducible from the committed notebooks/logs
+docs/figures/
+data_stress/**/pilot_ckpts/
+data_stress/**/secondary/
